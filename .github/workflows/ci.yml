@@ -1,0 +1,39 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mylocalon-gateway
+      # Shared protocol fixtures (conformance contract) live in the docs repo.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mylocalon-docs
+          path: docs
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mylocalon-gateway/go.mod
+          cache-dependency-path: mylocalon-gateway/go.sum
+      - name: gofmt
+        working-directory: mylocalon-gateway
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: vet
+        working-directory: mylocalon-gateway
+        run: go vet ./...
+      - name: test (race, redis contract, protocol fixtures)
+        working-directory: mylocalon-gateway
+        env:
+          ML_TEST_REDIS_URL: redis://localhost:6379/15
+        run: go test -race ./...
+      - name: build
+        working-directory: mylocalon-gateway
+        run: make build VERSION=${{ github.sha }}
