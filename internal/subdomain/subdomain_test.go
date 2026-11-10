@@ -2,7 +2,9 @@ package subdomain
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -62,6 +64,43 @@ func TestFromHost(t *testing.T) {
 		l, ok := FromHost(c.host, "mylocalon.com")
 		if l != c.label || ok != c.ok {
 			t.Errorf("FromHost(%q) = %q,%v", c.host, l, ok)
+		}
+	}
+}
+
+// TestReservedMatchesFixture keeps the Go copy identical to the canonical
+// policy shared with mylocalon-platform.
+func TestReservedMatchesFixture(t *testing.T) {
+	raw, err := os.ReadFile("../../../docs/fixtures/policy/reserved-subdomains.json")
+	if err != nil {
+		t.Skipf("policy fixture not found (docs repo not checked out next to the gateway): %v", err)
+	}
+	var fx struct {
+		Reserved    []string `json:"reserved"`
+		BrandTokens []string `json:"brandTokens"`
+		Cases       []struct {
+			Name    string `json:"name"`
+			Allowed bool   `json:"allowed"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &fx); err != nil {
+		t.Fatal(err)
+	}
+	same := func(label string, want []string, got map[string]bool) {
+		if len(want) != len(got) {
+			t.Errorf("%s: fixture has %d names, Go has %d", label, len(want), len(got))
+		}
+		for _, n := range want {
+			if !got[n] {
+				t.Errorf("%s: %q in fixture but not in Go", label, n)
+			}
+		}
+	}
+	same("reserved", fx.Reserved, reserved)
+	same("brandTokens", fx.BrandTokens, brandTokens)
+	for _, c := range fx.Cases {
+		if got := Validate(c.Name) == nil; got != c.Allowed {
+			t.Errorf("Validate(%q) allowed=%v, want %v", c.Name, got, c.Allowed)
 		}
 	}
 }
